@@ -6,4 +6,4 @@ conda.txt was generated using conda list --explicit > conda.txt
 
 To make the conda environment use:
 
-'''conda env create --file conda.txt'''
+```conda env create --file conda.txt```
