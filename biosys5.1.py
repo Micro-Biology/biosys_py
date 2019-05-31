@@ -696,7 +696,7 @@ def main():
             import_extraction_sheets(options.input_dir, options.plate_info, samples_otus)
             perform_similarity_checks(samples_otus, writer)
         except FileNotFoundError:
-            print("Extraction sheets could not be found at " + str(os.path.abspath(os.path.join(options.input_dir, options.plate_info))))
+            print("Extraction sheets could not be found, skipping similarity checks.")
     else:
         print("Not perfroming similarity checks, set --similarity True to perform this test.")
     
