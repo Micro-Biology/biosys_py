@@ -7,8 +7,6 @@ If extraction sheets are provided in an appropriate format then it will also cal
 the most similar sample and provide the Baroni–Urbani–Buser coefficient similarity 
 between the 2 samples."""
 
-
-
 import sys
 import os
 import glob
