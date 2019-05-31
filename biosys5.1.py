@@ -25,9 +25,11 @@ known_issues = '''\033[93m This program is still in WIP stage \033[0m
 
 current issues:
     -Multicore processing not supported.
-    -Cut off for distance not determined.
     -Remove all instances of global values.
-    -Similarity doesnt take into account repeat samples.
+    -Baroni-Urbani-Buser similarity not at 100% functional due to:
+        -Takes too long to perfrom for entire dataset. -solved?
+        -Cut off for distance not determined.
+        -Similarity doesnt take into account repeat samples.
 '''
 
 messages = [version,known_issues]
@@ -486,8 +488,8 @@ def perform_similarity_checks(sample_list, writer):
             plates.append(sample.plate)
         except AttributeError:
             plates.append(" ")
-    print("Mean simialrity of all samples: " + str(stat.mean(sim_all)))
-    print("Standard deviationm of simialrity of all samples: " + str(stat.stdev(sim_all)))
+    print("Mean similarity of all samples: " + str(stat.mean(sim_all)))
+    print("Standard deviationm of similarity of all samples: " + str(stat.stdev(sim_all)))
     sim_dict = {"FolderNumber":folder_nums,"Most Similar Sample":sim_samps, "BUB_Co":bub_cos, "Plate":plates}
     sim_df = pd.DataFrame.from_dict(sim_dict)
     sim_df.to_excel(writer, sheet_name="BUB_coefficient", header=True, index=False)
@@ -671,6 +673,7 @@ def get_args():
     parser.add_argument("--input_dir", help="Semi-Optional: input directory for all input files files.", default="Data", required=False)
     parser.add_argument("--area", help="Semi-Optional: EA or SEPA, defaults to EA.", default="EA", required=False)
     parser.add_argument("--plate_info", help="Semi-Optional: gives name of extraction plate file, defaults to Plates.xlsx.", default="Plates.xlsx", required=False)
+    parser.add_argument("--similarity", help="Semi-Optional: If True perfroms similarity checks.", default=False, required=False)
     args = parser.parse_args()
     return args
 
@@ -688,11 +691,14 @@ def main():
     
     samples_otus = import_otu_tables_main(options.input_dir, samples_meta_list)
 
-    try:
-        import_extraction_sheets(options.input_dir, options.plate_info, samples_otus)
-        perform_similarity_checks(samples_otus, writer)
-    except FileNotFoundError:
-        print("Extraction sheets could not be found at " + str(os.path.abspath(os.path.join(options.input_dir, options.plate_info))))
+    if options.similarity != False:
+        try:
+            import_extraction_sheets(options.input_dir, options.plate_info, samples_otus)
+            perform_similarity_checks(samples_otus, writer)
+        except FileNotFoundError:
+            print("Extraction sheets could not be found at " + str(os.path.abspath(os.path.join(options.input_dir, options.plate_info))))
+    else:
+        print("Not perfroming similarity checks, set --similarity True to perform this test.")
     
     save_sample_info(samples_otus, writer)
 
