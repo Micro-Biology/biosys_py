@@ -7,8 +7,6 @@ If extraction sheets are provided in an appropriate format then it will also cal
 the most similar sample and provide the Baroni–Urbani–Buser coefficient similarity 
 between the 2 samples."""
 
-
-
 import sys
 import os
 import glob
@@ -678,8 +676,6 @@ def get_args():
 
 def main():
 
-    version_info(messages)
-
     options = get_args()
     
     writer = pd.ExcelWriter("output.xlsx")
@@ -712,6 +708,7 @@ def main():
     writer.save()
 
 if __name__ == "__main__":
+    version_info(messages)
     main()
 
 
