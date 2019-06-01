@@ -14,8 +14,7 @@ import argparse
 import pandas as pd
 import send2trash
 import re
-import time
-import multiprocessing as mp
+#import multiprocessing as mp
 from math import sqrt
 import statistics as stat
 from metadata import *
@@ -498,7 +497,6 @@ def import_extraction_sheets(data_dir, xl_file, samples):
             pass
         else:
             sheet = sheet.set_index(list(sheet.columns.values)[0])
-            print(sheet.head())
             for row in range(0,sheet.shape[0]):
                 for col in range(1,sheet.shape[1]+1):
                     try:
