@@ -27,7 +27,6 @@ class Biosys_Version:
     known_issues = '''\033[93mThis program is still in WIP stage \033[0m
 current issues:
     -Multicore processing not supported.
-    -Remove all instances of global values.
     -Baroni-Urbani-Buser similarity not at 100% functional due to:
         -Unsure if it is relevant to calculate SD of BUB coefficient.
         -Takes too long to perform for entire dataset. -solved?

@@ -7,3 +7,15 @@ conda.txt was generated using ```conda list --explicit > conda.txt```
 To make the conda environment use:
 
 ```conda create --name <env> --file conda.txt```
+
+It is reccomended to perfrom the Baroni–Urbani–Buser coefficient similarity checks with only 1 run at a time.
+
+current issues:
+    *Multicore processing not supported.
+    *Baroni-Urbani-Buser similarity not at 100% functional due to:
+        **Unsure if it is relevant to calculate SD of BUB coefficient.
+        **Takes too long to perform for entire dataset. -solved?
+        **Cut off for distance not determined.
+        **Similarity doesnt take into account repeat samples.
+
+
