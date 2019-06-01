@@ -30,6 +30,7 @@ current issues:
     -Multicore processing not supported.
     -Remove all instances of global values.
     -Baroni-Urbani-Buser similarity not at 100% functional due to:
+        -Unsure if it is relevant to calculate SD of BUB coefficient.
         -Takes too long to perform for entire dataset. -solved?
         -Cut off for distance not determined.
         -Similarity doesnt take into account repeat samples.
