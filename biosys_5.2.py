@@ -28,8 +28,7 @@ class Biosys_Version:
 current issues:
     -Multicore processing not supported.
     -Baroni-Urbani-Buser similarity not at 100% functional due to:
-        -Unsure if it is relevant to calculate SD of BUB coefficient.
-        -Takes too long to perform for entire dataset. -solved?
+        -Takes too long to perform for entire dataset. -solved by optional?
         -Cut off for distance not determined.
         -Similarity doesnt take into account repeat samples.
 '''
@@ -336,7 +335,7 @@ def delete_file(file_in):
     if file_exists == True:
         send2trash.send2trash(file_in)
 
-def save_sample_info(sample_list, writer):
+def save_sample_info(sample_list, writer, control_regions):
     interim = "inter.text"
     delete_file(interim)
     file_interim = open(interim, "w")
@@ -344,7 +343,7 @@ def save_sample_info(sample_list, writer):
               "BatchNum,Sequence Counts,Pass/Fail,FolderNumber,Notes\n")
     file_interim.write(header)
     for sample in sample_list:
-        if sample.region == "Control":
+        if sample.region in control_regions:
             pass
         else:
             line = ( str(sample.sampleid) + "," + str(sample.siteid) + "," + str(sample.region) + "," +
@@ -673,7 +672,7 @@ def main():
     else:
         print("Not performing similarity checks, set --similarity True to perform this test.")
     
-    save_sample_info(samples_otus, writer)
+    save_sample_info(samples_otus, writer, control_regions)
 
     region_list = get_region_list(samples_otus)
     
