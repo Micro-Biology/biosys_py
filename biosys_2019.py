@@ -14,58 +14,24 @@ import argparse
 import pandas as pd
 import send2trash
 import re
-import time
-import multiprocessing as mp
 from math import sqrt
 import statistics as stat
+from metadata import *
 
-version = ("\033[1;34m" + "\nBiosys Version: " + str(os.path.basename(__file__))[6:9] + "\033[0m")
+#Class Objects:
 
-known_issues = '''\033[93m This program is still in WIP stage \033[0m
-
+class Biosys_Version:
+    """Stores and reports information about the current version of biosys.py."""
+    version = ("\033[1;34m" + "\nBiosys Version: 5.2" + "\033[0m")
+    known_issues = '''\033[93mThis program is still in WIP stage \033[0m
 current issues:
     -Multicore processing not supported.
-    -Remove all instances of global values.
     -Baroni-Urbani-Buser similarity not at 100% functional due to:
-        -Takes too long to perfrom for entire dataset. -solved?
+        -Takes too long to perform for entire dataset. -solved by optional?
         -Cut off for distance not determined.
         -Similarity doesnt take into account repeat samples.
 '''
-
-messages = [version,known_issues]
-
-def version_info(messages):
-    for message in messages:
-        print(message)
-
-#global values: (yes this is dumb but it works)
-
-no_value = "no_value"
-
-community_analysis_to_keep_list = ["all"]
-
-control_regions = ["Blanks", "Positives", "Gblocks", "NTCs", "Unknowns", "TR"]
-
-batch_num_dict = {  "Run_1":"25-01-19",
-                    "Run_2":"15-01-19",
-                    "Run_3":"18-01-19",
-                    "Run_4":"21-01-19",
-                    "Run_5":"18-01-19",
-                    "Run_6":"24-01-19",
-                    "Run_7":"28-01-19",
-                    "Run_8":"31-01-19",
-                    "Run_9":"04-02-19",
-                    "Run_10":"07-02-19",
-                    "Run_11":"12-02-19",
-                    "Run_12":"15-02-19",
-                    "Run_13":"23-02-19",
-                    "Run_14":"28-03-19",
-                    "Run_15":"19-04-19",
-                    "Run_16":"23-04-19",
-                    "Run_17":"17-05-19"
-                    }
-
-#Class Objects:
+    messages = [version,known_issues]
 
 class FormatError(Exception):
     '''Formating of file is incompatible with this program.'''
@@ -77,6 +43,7 @@ class MathsError(Exception):
 
 class Diatom_Sample:
     """A slice of an OTU table, and associated metadata for a diatom sample."""
+    #this imports data from the table from Tim
     def __init__(self, sampleid, siteid, area, region, prn, sitename, sampledate, barcode, folder):
         if folder:
             try:
@@ -146,6 +113,7 @@ class Diatom_Sample:
         else:
             self.barcode = no_value
 
+        #sets these values to defaults just so if they arent added later they have a value
         self.batch_num = no_value
         self.count = 0
         self.pass_fail = "Unsuccessful"
@@ -155,18 +123,6 @@ class Diatom_Sample:
         self.sim_sample = no_value
         self.note = ""
         self.plate_loc = no_value
-
-    def set_analysis_date(self):
-        '''Sets the date of analysis to the date of the MiSeq run.'''
-        if self.batch_num == no_value:
-            self.analysis_date = no_value
-        else:
-            try:
-                date = batch_num_dict[self.batch_num]
-            except KeyError:
-                date = "Run metadata has not been set"
-                print(date + " for sample: " + str(self.folder) + " " + str(self.batch_num))
-            self.analysis_date = date
 
     def assign_results(self, otus, batch_num):
         '''Assigns otu table results to the sample.'''
@@ -190,6 +146,18 @@ class Diatom_Sample:
         else:
             self.batch_num = no_value
             self.analysis_date = no_value
+
+    def set_analysis_date(self):
+        '''Sets the date of analysis to the date of the MiSeq run.'''
+        if self.batch_num == no_value:
+            self.analysis_date = no_value
+        else:
+            try:
+                date = batch_num_dict[self.batch_num]
+            except KeyError:
+                date = "Run metadata has not been set"
+                print(date + " for sample: " + str(self.folder) + " " + str(self.batch_num))
+            self.analysis_date = date
 
     def sort_control(self):
         if self.region == "Control":
@@ -368,7 +336,7 @@ def delete_file(file_in):
     if file_exists == True:
         send2trash.send2trash(file_in)
 
-def save_sample_info(sample_list, writer):
+def save_sample_info(sample_list, writer, control_regions):
     interim = "inter.text"
     delete_file(interim)
     file_interim = open(interim, "w")
@@ -376,7 +344,7 @@ def save_sample_info(sample_list, writer):
               "BatchNum,Sequence Counts,Pass/Fail,FolderNumber,Notes\n")
     file_interim.write(header)
     for sample in sample_list:
-        if sample.region == "Control":
+        if sample.region in control_regions:
             pass
         else:
             line = ( str(sample.sampleid) + "," + str(sample.siteid) + "," + str(sample.region) + "," +
@@ -528,21 +496,25 @@ def import_extraction_sheets(data_dir, xl_file, samples):
             pass
         else:
             sheet = sheet.set_index(list(sheet.columns.values)[0])
-            print(sheet.head())
-            for row in range(0,sheet.shape[0]):
-                for col in range(1,sheet.shape[1]+1):
+            plate = sheet[["Barcode Loc", "Sample ID"]].copy().head(96) 
+            plate_samples = plate["Sample ID"].tolist()
+            new_plate_samples = []
+            for item in plate_samples:
+                new_item = str(item)
+                new_plate_samples.append(new_item)
+            for sample in samples:
+                if sample.folder in new_plate_samples:
+                    row_num = new_plate_samples.index(sample.folder)
+                    barcode_location = plate.iat[row_num, 0]
+                    row_letters = ["A","B","C","D","E","F","G","H"]
+                    row = row_letters.index(barcode_location[0])
+                    col = int(barcode_location[1])
+                    sur_coords = get_surrounding_coords(row, col)
                     try:
-                        samplesheet_id = str(int(sheet.iloc[row][col])).upper().strip()
-                    except ValueError:
-                        samplesheet_id = str(sheet.iloc[row][col]).upper().strip()
-                    sur_coords = get_surrounding_coords(row,col)
-                    for sample in samples:
-                        if str(sample.folder) == samplesheet_id:
-                            try:
-                                if sample.plate:
-                                    sample.amend_sample_note("Sample also found on " + sheet_name)
-                            except AttributeError:
-                                sample.assign_surrounding_samples(sur_coords, row, col, sheet_name)
+                        if sample.plate:
+                            sample.amend_sample_note("Sample also found on " + sheet_name)
+                    except AttributeError:
+                        sample.assign_surrounding_samples(sur_coords, row, col, sheet_name)
                   
 
 def import_otus(file_name):
@@ -572,7 +544,7 @@ def import_otu_tables_main(directory, sample_list):
                     new_header = header_split[0]
                 new_headers[header] = new_header
             except IndexError:
-                print("Header " + str(header) + " has been assumed to have been changed manually.")
+                print("\nHeader " + str(header) + " has been assumed to have been changed manually.")
                 new_headers[header] = header
         otus = otus.rename(columns=new_headers)
         headers = list(otus.columns.values)
@@ -669,15 +641,21 @@ def import_metadata_ea(inputxl, directory):
 
 def get_args():
     parser = argparse.ArgumentParser(description="Processes diatom data into regions.")
-    parser.add_argument("--input_xl", help="Semi-Optional: input excel file in .xlsx format containing information about the samples.", default="infoEA.xlsx", required=False)
+    parser.add_argument("--input_xl", help="Required: input excel file in .xlsx format containing information about the samples.", required=True)
     parser.add_argument("--input_dir", help="Semi-Optional: input directory for all input files files.", default="Data", required=False)
     parser.add_argument("--area", help="Semi-Optional: EA or SEPA, defaults to EA.", default="EA", required=False)
-    parser.add_argument("--plate_info", help="Semi-Optional: gives name of extraction plate file, defaults to Plates.xlsx.", default="Plates.xlsx", required=False)
-    parser.add_argument("--similarity", help="Semi-Optional: If True perfroms similarity checks.", default=False, required=False)
+    parser.add_argument("--plate_info", help="Required: gives name of extraction plate file, defaults to Plates.xlsx.", required=True)
+    parser.add_argument("--similarity", help="Semi-Optional: If True performs similarity checks.", default=False, required=False)
     args = parser.parse_args()
     return args
 
+def print_version():
+    for message in Biosys_Version.messages:
+        print(message)
+
 def main():
+    
+    print_version()
 
     options = get_args()
     
@@ -696,11 +674,11 @@ def main():
             import_extraction_sheets(options.input_dir, options.plate_info, samples_otus)
             perform_similarity_checks(samples_otus, writer)
         except FileNotFoundError:
-            print("Extraction sheets could not be found at " + str(os.path.abspath(os.path.join(options.input_dir, options.plate_info))))
+            print("Extraction sheets could not be found, skipping similarity checks.")
     else:
-        print("Not perfroming similarity checks, set --similarity True to perform this test.")
+        print("Not performing similarity checks, set --similarity True to perform this test.")
     
-    save_sample_info(samples_otus, writer)
+    save_sample_info(samples_otus, writer, control_regions)
 
     region_list = get_region_list(samples_otus)
     
@@ -714,7 +692,6 @@ def main():
     writer.save()
 
 if __name__ == "__main__":
-    version_info(messages)
     main()
 
 
