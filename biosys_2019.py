@@ -14,7 +14,6 @@ import argparse
 import pandas as pd
 import send2trash
 import re
-#import multiprocessing as mp
 from math import sqrt
 import statistics as stat
 from metadata import *
@@ -44,6 +43,7 @@ class MathsError(Exception):
 
 class Diatom_Sample:
     """A slice of an OTU table, and associated metadata for a diatom sample."""
+    #this imports data from the table from Tim
     def __init__(self, sampleid, siteid, area, region, prn, sitename, sampledate, barcode, folder):
         if folder:
             try:
@@ -113,6 +113,7 @@ class Diatom_Sample:
         else:
             self.barcode = no_value
 
+        #sets these values to defaults just so if they arent added later they have a value
         self.batch_num = no_value
         self.count = 0
         self.pass_fail = "Unsuccessful"
@@ -122,18 +123,6 @@ class Diatom_Sample:
         self.sim_sample = no_value
         self.note = ""
         self.plate_loc = no_value
-
-    def set_analysis_date(self):
-        '''Sets the date of analysis to the date of the MiSeq run.'''
-        if self.batch_num == no_value:
-            self.analysis_date = no_value
-        else:
-            try:
-                date = batch_num_dict[self.batch_num]
-            except KeyError:
-                date = "Run metadata has not been set"
-                print(date + " for sample: " + str(self.folder) + " " + str(self.batch_num))
-            self.analysis_date = date
 
     def assign_results(self, otus, batch_num):
         '''Assigns otu table results to the sample.'''
@@ -157,6 +146,18 @@ class Diatom_Sample:
         else:
             self.batch_num = no_value
             self.analysis_date = no_value
+
+    def set_analysis_date(self):
+        '''Sets the date of analysis to the date of the MiSeq run.'''
+        if self.batch_num == no_value:
+            self.analysis_date = no_value
+        else:
+            try:
+                date = batch_num_dict[self.batch_num]
+            except KeyError:
+                date = "Run metadata has not been set"
+                print(date + " for sample: " + str(self.folder) + " " + str(self.batch_num))
+            self.analysis_date = date
 
     def sort_control(self):
         if self.region == "Control":
@@ -495,20 +496,25 @@ def import_extraction_sheets(data_dir, xl_file, samples):
             pass
         else:
             sheet = sheet.set_index(list(sheet.columns.values)[0])
-            for row in range(0,sheet.shape[0]):
-                for col in range(1,sheet.shape[1]+1):
+            plate = sheet[["Barcode Loc", "Sample ID"]].copy().head(96) 
+            plate_samples = plate["Sample ID"].tolist()
+            new_plate_samples = []
+            for item in plate_samples:
+                new_item = str(item)
+                new_plate_samples.append(new_item)
+            for sample in samples:
+                if sample.folder in new_plate_samples:
+                    row_num = new_plate_samples.index(sample.folder)
+                    barcode_location = plate.iat[row_num, 0]
+                    row_letters = ["A","B","C","D","E","F","G","H"]
+                    row = row_letters.index(barcode_location[0])
+                    col = int(barcode_location[1])
+                    sur_coords = get_surrounding_coords(row, col)
                     try:
-                        samplesheet_id = str(int(sheet.iloc[row][col])).upper().strip()
-                    except ValueError:
-                        samplesheet_id = str(sheet.iloc[row][col]).upper().strip()
-                    sur_coords = get_surrounding_coords(row,col)
-                    for sample in samples:
-                        if str(sample.folder) == samplesheet_id:
-                            try:
-                                if sample.plate:
-                                    sample.amend_sample_note("Sample also found on " + sheet_name)
-                            except AttributeError:
-                                sample.assign_surrounding_samples(sur_coords, row, col, sheet_name)
+                        if sample.plate:
+                            sample.amend_sample_note("Sample also found on " + sheet_name)
+                    except AttributeError:
+                        sample.assign_surrounding_samples(sur_coords, row, col, sheet_name)
                   
 
 def import_otus(file_name):
@@ -538,7 +544,7 @@ def import_otu_tables_main(directory, sample_list):
                     new_header = header_split[0]
                 new_headers[header] = new_header
             except IndexError:
-                print("Header " + str(header) + " has been assumed to have been changed manually.")
+                print("\nHeader " + str(header) + " has been assumed to have been changed manually.")
                 new_headers[header] = header
         otus = otus.rename(columns=new_headers)
         headers = list(otus.columns.values)
@@ -635,10 +641,10 @@ def import_metadata_ea(inputxl, directory):
 
 def get_args():
     parser = argparse.ArgumentParser(description="Processes diatom data into regions.")
-    parser.add_argument("--input_xl", help="Semi-Optional: input excel file in .xlsx format containing information about the samples.", default="infoEA.xlsx", required=False)
+    parser.add_argument("--input_xl", help="Required: input excel file in .xlsx format containing information about the samples.", required=True)
     parser.add_argument("--input_dir", help="Semi-Optional: input directory for all input files files.", default="Data", required=False)
     parser.add_argument("--area", help="Semi-Optional: EA or SEPA, defaults to EA.", default="EA", required=False)
-    parser.add_argument("--plate_info", help="Semi-Optional: gives name of extraction plate file, defaults to Plates.xlsx.", default="Plates.xlsx", required=False)
+    parser.add_argument("--plate_info", help="Required: gives name of extraction plate file, defaults to Plates.xlsx.", required=True)
     parser.add_argument("--similarity", help="Semi-Optional: If True performs similarity checks.", default=False, required=False)
     args = parser.parse_args()
     return args
