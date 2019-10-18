@@ -22,7 +22,7 @@ from metadata import *
 
 class Biosys_Version:
     """Stores and reports information about the current version of biosys.py."""
-    version = ("\033[1;34m" + "\nBiosys Version: 5.2" + "\033[0m")
+    version = ("\033[1;34m" + "\nBiosys Version: 2019.10" + "\033[0m")
     known_issues = '''\033[93mThis program is still in WIP stage \033[0m
 current issues:
     -Multicore processing not supported.
