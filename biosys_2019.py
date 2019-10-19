@@ -16,13 +16,13 @@ import send2trash
 import re
 from math import sqrt
 import statistics as stat
-from metadata import *
+from metadata import no_value, community_analysis_regions, control_regions, batch_info
 
 #Class Objects:
 
 class Biosys_Version:
     """Stores and reports information about the current version of biosys.py."""
-    version = ("\033[1;34m" + "\nBiosys Version: 5.2" + "\033[0m")
+    version = ("\033[1;34m" + "\nBiosys Version: 2019.10" + "\033[0m")
     known_issues = '''\033[93mThis program is still in WIP stage \033[0m
 current issues:
     -Multicore processing not supported.
@@ -138,7 +138,7 @@ class Diatom_Sample:
         if batch_num:
             self.batch_num = str(batch_num).split(".")[0]
             try:
-                date = batch_num_dict[self.batch_num]
+                date = batch_info[self.batch_num]
             except KeyError:
                 date = "Run metadata has not been set"
                 print(date + " for sample: " + str(self.folder) + " " + str(self.batch_num))
@@ -153,7 +153,7 @@ class Diatom_Sample:
             self.analysis_date = no_value
         else:
             try:
-                date = batch_num_dict[self.batch_num]
+                date = batch_info[self.batch_num]
             except KeyError:
                 date = "Run metadata has not been set"
                 print(date + " for sample: " + str(self.folder) + " " + str(self.batch_num))
@@ -499,11 +499,12 @@ def import_extraction_sheets(data_dir, xl_file, samples):
             plate = sheet[["Barcode Loc", "Sample ID"]].copy().head(96) 
             plate_samples = plate["Sample ID"].tolist()
             new_plate_samples = []
-            for item in plate_samples:
-                new_item = str(item)
-                new_plate_samples.append(new_item)
+            for sample_id in plate_samples:
+                new_sample_id = str(sample_id)
+                new_plate_samples.append(new_sample_id)
             for sample in samples:
                 if sample.folder in new_plate_samples:
+                    sample.batch_num = sheet_name
                     row_num = new_plate_samples.index(sample.folder)
                     barcode_location = plate.iat[row_num, 0]
                     row_letters = ["A","B","C","D","E","F","G","H"]
@@ -659,7 +660,7 @@ def main():
 
     options = get_args()
     
-    writer = pd.ExcelWriter("output.xlsx")
+    writer = pd.ExcelWriter("To_Tim_output.xlsx")
 
     print("Area: " + str(options.area))
     if str(options.area).upper() == "SEPA":
@@ -685,7 +686,7 @@ def main():
     for region in region_list: 
         filter_otus_by_region(region, samples_otus, writer, control_regions)
 
-    community_analysis_export(samples_otus, community_analysis_to_keep_list, control_regions)
+    community_analysis_export(samples_otus, community_analysis_regions, control_regions)
 
     delete_file("inter.text")
 
