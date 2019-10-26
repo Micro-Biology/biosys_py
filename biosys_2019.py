@@ -7,27 +7,29 @@ If extraction sheets are provided in an appropriate format then it will also cal
 the most similar sample and provide the Baroni–Urbani–Buser coefficient similarity 
 between the 2 samples."""
 
-import sys
-import os
-import glob
 import argparse
-import pandas as pd
-import send2trash
-import re
+import concurrent.futures
+import glob
+from math import ceil
 from math import sqrt
 import statistics as stat
+import sys
+import os
+import pandas as pd
+import re
+import send2trash
+
 from metadata import no_value, community_analysis_regions, control_regions, batch_info
 
 #Class Objects:
 
 class Biosys_Version:
     """Stores and reports information about the current version of biosys.py."""
-    version = ("\033[1;34m" + "\nBiosys Version: 2019.10" + "\033[0m")
+    version = ("\033[1;34m" + "\nBiosys Version: 2019.10.1" + "\033[0m")
     known_issues = '''\033[93mThis program is still in WIP stage \033[0m
 current issues:
-    -Multicore processing not supported.
     -Baroni-Urbani-Buser similarity not at 100% functional due to:
-        -Takes too long to perform for entire dataset. -solved by optional?
+        -No progress bar - we'll see how annoying this is.
         -Cut off for distance not determined.
         -Similarity doesnt take into account repeat samples.
 '''
@@ -123,6 +125,7 @@ class Diatom_Sample:
         self.sim_sample = no_value
         self.note = ""
         self.plate_loc = no_value
+        self.sur_tabs = {}
 
     def assign_results(self, otus, batch_num):
         '''Assigns otu table results to the sample.'''
@@ -166,21 +169,29 @@ class Diatom_Sample:
                 self.folder = self.folder
             else:
                 self.folder = str(self.folder)[0:s_loc]
-            self.sampleid = self.folder + "_" + str(self.batch_num)
+            self.sampleid = self.folder
             if self.folder.lower()[0] == "b":
                 self.region = "Blanks"
+                #This may not workign waiting for test data...
+                self.folder = self.folder[0:5]
             elif self.folder.lower()[0] == "n":
                 self.region = "NTCs"
+                #This may not workign waiting for test data...
+                self.folder = self.folder[0:6]
             elif self.folder.lower()[0] == "p":
                 self.region = "Positives"
+                self.folder = self.folder[0:5]
             elif self.folder.lower()[0] == "g":
                 self.region = "Gblocks"
+                self.folder = self.folder[0:9]
             elif self.folder.lower()[0] == "t":
                 self.region = "TR"
+                self.folder = self.folder[0:9]
             else:
                 self.region = "Unknowns"
                 self.sampleid = "F" + str(self.folder)
-            self.folder = self.folder.upper()
+            #Removed for now as I dont think we need it and it is interfering with BUB
+            #self.folder = self.folder.upper()
 
     def assign_surrounding_samples(self, sur_coords, row, col, sheet_name):
         '''Assigns the plate, coordinate, and surrounding coordinates for similaity analysis.'''
@@ -204,7 +215,7 @@ class Diatom_Sample:
 
 #Global functions:
 
-def community_analysis_export(samples_otus, keep_list, control_regions):
+def community_analysis_export(samples_otus, keep_list, control_regions, min_seqs):
     otus_all_writer = pd.ExcelWriter("otus_all.xlsx")
     print("Exporting all otus for community analysis")
     if keep_list[0] == "all":
@@ -215,9 +226,11 @@ def community_analysis_export(samples_otus, keep_list, control_regions):
                      "TR", "Aberdeen", "Perth",
                      "Eurocentrl", "Dingwall", "Dumfries",
                      "Galashiels", "Bowlblank" ]
-
+    if min_seqs <1:
+        print("Minimum sequences for export for community analysis has been reverted to 1.")
+        min_seqs = 1
     for sample in samples_otus:
-        if sample.count >= 1:
+        if sample.count >= min_seqs:
             if sample.region in keep_list:
                 if sample.region in control_regions:
                     try:
@@ -395,72 +408,83 @@ same = {"PrefTaxon":["EC","IE"],"A":[1,0],"B":[1,0]}
 assert baroni_urbani_buser_coefficient(pd.DataFrame(data=dif)) == 0
 assert baroni_urbani_buser_coefficient(pd.DataFrame(data=same)) == 1
 
-def perform_similarity_checks(sample_list, writer):
-    print("Performing Baroni–Urbani–Buser coefficient similarity checks...")
-    sim_all = []
+
+def bub_handler(sample):
+    if sample.pass_fail != "Successful":
+        return [sample.folder, "", "", sample.plate]
+    highest_sim = 0
+    most_sim_sample = ""
+    for folder in sample.sur_tabs.keys():
+        df = sample.sur_tabs[folder]
+        similarity = baroni_urbani_buser_coefficient(df)
+        if similarity > highest_sim:
+            highest_sim = similarity
+            most_sim_sample = folder
+    return [sample.folder, most_sim_sample, highest_sim, sample.plate]
+
+
+def assign_sur_dfs(sample_list):
     for sample_cent in sample_list:
-        status = sample_cent.folder
-        count = sample_list.index(sample_cent)
-        filled_len = int(round(60 * count / float(len(sample_list))))
-        percents = round(100.0 * count / float(len(sample_list)), 5)
-        bar = '=' * filled_len + '-' * (60 - filled_len)
-        sys.stdout.write('[%s] %s%s Analysing sample: %s\r' % (bar, percents, '%', status))
-        sys.stdout.flush()
         cent_df = sample_cent.otu_tab
         if sample_cent.pass_fail != "Successful":
             continue
-        highest_sim = 0.0
-        most_sim_sample = ""
+        try:
+            if sample_cent.plate:
+                pass
+        except AttributeError:
+            continue
         for sample_sur in sample_list:
             if sample_cent == sample_sur:
-                pass
-            else:
-                if sample_sur.pass_fail != "Successful":
+                continue
+            if sample_sur.pass_fail != "Successful":
+                continue
+            try:
+                if sample_cent.plate != sample_sur.plate:
                     continue
-                try:
-                    if sample_cent.plate != sample_sur.plate:
-                        pass
-                    else:
-                        if sample_sur.plate_loc in sample_cent.sur_samples:
-                            sur_df = sample_sur.otu_tab
-                            if not isinstance(sur_df, pd.DataFrame):
-                                continue
-                            df = pd.merge(cent_df, sur_df, on="PrefTaxon")
-                            similarity = baroni_urbani_buser_coefficient(df)
-                            sim_all.append(similarity)
-                            if similarity > highest_sim:
-                                highest_sim = similarity
-                                most_sim_sample = sample_sur.folder
-                        else:
-                            sur_df = sample_sur.otu_tab
-                            if not isinstance(sur_df, pd.DataFrame):
-                                continue
-                            df = pd.merge(cent_df, sur_df, on="PrefTaxon")
-                            similarity = baroni_urbani_buser_coefficient(df)
-                            sim_all.append(similarity)
-                except AttributeError:
-                    pass
-        sample_cent.assign_most_sim_sample(highest_sim, most_sim_sample)
-    print("\n")
-    folder_nums = []
-    sim_samps = []
-    bub_cos = []
-    plates = []
-    plate_locs = []
-    for sample in sample_list:
-        folder_nums.append(sample.folder)
-        sim_samps.append(sample.sim_sample)
-        bub_cos.append(sample.sim)
-        plate_locs.append(sample.plate_loc)
-        try:
-            plates.append(sample.plate)
-        except AttributeError:
-            plates.append(" ")
-    print("Mean similarity of all samples: " + str(stat.mean(sim_all)))
-    print("Standard deviationm of similarity of all samples: " + str(stat.stdev(sim_all)))
-    sim_dict = {"FolderNumber":folder_nums,"Most Similar Sample":sim_samps, "BUB_Co":bub_cos, "Plate":plates}
-    sim_df = pd.DataFrame.from_dict(sim_dict)
-    sim_df.to_excel(writer, sheet_name="BUB_coefficient", header=True, index=False)
+            except AttributeError:
+                #This passes silently as flag when the sample is the centroid
+                continue
+            #Could this be included in ther above bit?
+            #if sample_cent.plate != sample_sur.plate:
+                #continue
+            try:
+                if sample_sur.plate_loc == no_value:
+                    continue
+                if sample_sur.plate_loc in sample_cent.sur_samples:
+                    sur_df = sample_sur.otu_tab
+                    if not isinstance(sur_df, pd.DataFrame):
+                        continue
+                    df = pd.merge(cent_df, sur_df, on="PrefTaxon")
+                    sample_cent.sur_tabs[sample_sur.folder] = df
+            except AttributeError:
+                pass
+    
+
+def perform_similarity_checks(sample_list, writer, cores):
+    print("Assigning surrounding samples...")
+    assign_sur_dfs(sample_list)
+    sim_data = [["Sample","Most similar Sample", "BUB coefficient", "Batch Num"]]
+    print("Performing Baroni–Urbani–Buser coefficient similarity checks...")
+    with concurrent.futures.ProcessPoolExecutor(max_workers=cores) as executor:
+        future_to_task = {executor.submit(bub_handler, sample): sample for sample in sample_list}
+        for future in concurrent.futures.as_completed(future_to_task):
+            i = future_to_task[future]
+            try:
+                data = future.result()
+            except AttributeError:
+                pass
+            except Exception as exc:
+                print('%r generated exception: %s' % (i, exc))
+            else:
+                #Hased out for now but useful when we set the limit
+                #if data[2] == "":
+                #    pass
+                #elif data[2] > 0.9:
+                #    sim_data.append(data)#
+                sim_data.append(data)
+    sim_df = pd.DataFrame(sim_data)
+    sim_df.to_excel(writer, sheet_name="BUB_coefficient", header=False, index=False)
+
 
 def get_surrounding_coords(row, col):
     if row == 0:
@@ -511,11 +535,12 @@ def import_extraction_sheets(data_dir, xl_file, samples):
                     row = row_letters.index(barcode_location[0])
                     col = int(barcode_location[1])
                     sur_coords = get_surrounding_coords(row, col)
-                    try:
-                        if sample.plate:
-                            sample.amend_sample_note("Sample also found on " + sheet_name)
-                    except AttributeError:
-                        sample.assign_surrounding_samples(sur_coords, row, col, sheet_name)
+                    sample.assign_surrounding_samples(sur_coords, row, col, sheet_name)
+                    #try:
+                    #    if sample.plate:
+                    #        sample.amend_sample_note("Sample also found on " + sheet_name)
+                    #except AttributeError:
+                    #    sample.assign_surrounding_samples(sur_coords, row, col, sheet_name)
                   
 
 def import_otus(file_name):
@@ -643,16 +668,22 @@ def import_metadata_ea(inputxl, directory):
 def get_args():
     parser = argparse.ArgumentParser(description="Processes diatom data into regions.")
     parser.add_argument("--input_xl", help="Required: input excel file in .xlsx format containing information about the samples.", required=True)
-    parser.add_argument("--input_dir", help="Semi-Optional: input directory for all input files files.", default="Data", required=False)
-    parser.add_argument("--area", help="Semi-Optional: EA or SEPA, defaults to EA.", default="EA", required=False)
+    parser.add_argument("--input_dir", help="Semi-Optional: input directory for all input files files.", default="Data")
+    parser.add_argument("--area", help="Semi-Optional: EA or SEPA, defaults to EA.", default="EA")
     parser.add_argument("--plate_info", help="Required: gives name of extraction plate file, defaults to Plates.xlsx.", required=True)
-    parser.add_argument("--similarity", help="Semi-Optional: If True performs similarity checks.", default=False, required=False)
+    parser.add_argument("--similarity", help="Semi-Optional: If True performs similarity checks. If set to false it is possible you will miss samples that need repeating.", default=False)
+    parser.add_argument("--min_seqs", help="Semi-Optional: the minimum number of sequences for a sample to be exported for community analysis.", default=1)
+    parser.add_argument("--threads", help="Semi-Optional: The number of workers the BUB calculations should use, by default the program will add 10% of the specified count.", default=1)
     args = parser.parse_args()
     return args
 
 def print_version():
     for message in Biosys_Version.messages:
         print(message)
+
+def round_up(n, decimals=0):
+    multiplier = 10 ** decimals
+    return math.ceil(n * multiplier) / multiplier
 
 def main():
     
@@ -661,6 +692,8 @@ def main():
     options = get_args()
     
     writer = pd.ExcelWriter("To_Tim_output.xlsx")
+
+    cores = ceil(int(options.threads) * 1.2)
 
     print("Area: " + str(options.area))
     if str(options.area).upper() == "SEPA":
@@ -673,11 +706,11 @@ def main():
     if options.similarity != False:
         try:
             import_extraction_sheets(options.input_dir, options.plate_info, samples_otus)
-            perform_similarity_checks(samples_otus, writer)
+            perform_similarity_checks(samples_otus, writer, cores)
         except FileNotFoundError:
-            print("Extraction sheets could not be found, skipping similarity checks.")
+            print("Extraction sheets could not be found, it is possible you will miss samples that need repeating, due to too few sequences, skipping similarity checks as well location is unknown.")
     else:
-        print("Not performing similarity checks, set --similarity True to perform this test.")
+        print("Not performing similarity checks, set --similarity True to perform this test. It is possible you will miss samples that need repeating, due to too few sequences.")
     
     save_sample_info(samples_otus, writer, control_regions)
 
@@ -686,7 +719,7 @@ def main():
     for region in region_list: 
         filter_otus_by_region(region, samples_otus, writer, control_regions)
 
-    community_analysis_export(samples_otus, community_analysis_regions, control_regions)
+    community_analysis_export(samples_otus, community_analysis_regions, control_regions, options.min_seqs)
 
     delete_file("inter.text")
 
